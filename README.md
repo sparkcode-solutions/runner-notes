@@ -1,50 +1,194 @@
-# Welcome to your Expo app 👋
+# Runner Notes 🏃
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Runner Notes is an iOS-first running tracking app that helps you record and journal your running journey. Think of it as Apple Notes meets Strava - each run becomes a "Run Moment" containing pace data, photos, voice memos, and journal entries.
 
-## Get started
+## Features (MVP V1)
 
-1. Install dependencies
+### ✅ Implemented
+- **Apple Sign-In Authentication** - Secure Firebase authentication
+- **Run Tracking** - GPS-based distance, duration, and pace calculation
+- **Trail Management** - Create and select from custom trails
+- **Run Moments List** - View all your past runs with key stats
+- **Journal Entries** - Write and auto-save thoughts about each run
+- **Dark Theme** - Beautiful minimal dark UI optimized for iOS
 
+### 🎨 UI Only (Coming Soon)
+- **Run Snaps** - Photo capture during runs
+- **Run Memos** - Voice recordings during runs
+- **Route Maps** - Visual map of your run path
+
+## Tech Stack
+
+- **Framework**: React Native with Expo
+- **Routing**: Expo Router (file-based routing)
+- **Authentication**: Firebase Auth with Apple Sign-In
+- **Database**: Cloud Firestore
+- **Location**: expo-location for GPS tracking
+- **Language**: TypeScript
+
+## Project Structure
+
+```
+runner-notes/
+├── app/
+│   ├── _layout.tsx              # Root layout with auth provider
+│   ├── auth/
+│   │   └── sign-in.tsx          # Apple Sign-In screen
+│   ├── (tabs)/
+│   │   └── index.tsx            # Home - Run Moments list
+│   └── run/
+│       ├── create.tsx           # Active run tracking
+│       ├── [id].tsx             # Run Moment detail view
+│       └── journal/
+│           └── [id].tsx         # Journal editor
+├── components/
+│   ├── RunMomentCard.tsx        # Run list item
+│   ├── TrailSelector.tsx        # Trail dropdown
+│   ├── PaceDisplay.tsx          # Metrics display
+│   ├── RunControls.tsx          # Start/pause/stop buttons
+│   └── ui/                      # Reusable UI components
+├── lib/
+│   ├── firebase.ts              # Firebase initialization
+│   ├── auth-context.tsx         # Auth state management
+│   ├── firestore.ts             # Firestore helpers
+│   └── location.ts              # GPS tracking utilities
+└── constants/
+    └── theme.ts                 # Dark theme colors
+```
+
+## Getting Started
+
+### Prerequisites
+- Node.js 18+
+- iOS device or simulator (for testing)
+- Firebase project
+- Apple Developer account (for Apple Sign-In)
+
+### Installation
+
+1. **Install dependencies**
    ```bash
    npm install
    ```
 
-2. Start the app
+2. **Configure Firebase**
+   - Follow instructions in `FIREBASE_SETUP.md`
+   - Add `GoogleService-Info.plist` to `ios/runnernotes/`
+   - Enable Apple Sign-In in Firebase Console
+   - Set up Firestore with security rules
 
+3. **Update iOS configuration**
    ```bash
-   npx expo start
+   cd ios
+   pod install
+   cd ..
    ```
 
-In the output, you'll find options to open the app in a
+4. **Run on iOS**
+   ```bash
+   npx expo run:ios
+   ```
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## Firebase Setup
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+See `FIREBASE_SETUP.md` for detailed instructions on:
+- Creating a Firebase project
+- Enabling Apple Sign-In
+- Setting up Firestore
+- Configuring security rules
+- iOS integration
 
-## Get a fresh project
+## Usage
 
-When you're ready, run:
+1. **Sign In** - Use Apple Sign-In on first launch
+2. **Start a Run** - Tap the + button, select a trail, and start tracking
+3. **Track Your Run** - View real-time distance, duration, and pace
+4. **Pause/Resume** - Control your run with intuitive buttons
+5. **Complete Run** - Stop the run to save it as a Run Moment
+6. **Add Journals** - Write your thoughts about each run
+7. **View History** - Browse all your past Run Moments
 
-```bash
-npm run reset-project
+## Key Components
+
+### Run Tracking
+- GPS-based location tracking with expo-location
+- Real-time pace calculation (min/km)
+- Distance measurement using Haversine formula
+- Timer with pause/resume functionality
+
+### Data Model
+```
+users/{userId}
+  └── trails/{trailId}
+  └── runMoments/{runMomentId}
+      ├── journals/{journalId}
+      ├── snaps/{snapId} (future)
+      └── memos/{memoId} (future)
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+### Design System
+- **Background**: `#0A0A0A`
+- **Surface**: `#1A1A1A`
+- **Accent**: `#00D4AA` (teal/mint)
+- **Text Primary**: `#FFFFFF`
+- **Text Secondary**: `#888888`
 
-## Learn more
+## Development
 
-To learn more about developing your project with Expo, look at the following resources:
+### File-based Routing
+Expo Router provides automatic routing based on file structure:
+- `app/auth/sign-in.tsx` → `/auth/sign-in`
+- `app/run/[id].tsx` → `/run/:id`
+- `app/run/journal/[id].tsx` → `/run/journal/:id`
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+### State Management
+- Auth state via React Context (`lib/auth-context.tsx`)
+- Real-time Firestore subscriptions for data
+- Local state for active run tracking
 
-## Join the community
+### Location Permissions
+iOS requires location permissions configured in `app.json`:
+- When in Use: For active run tracking
+- Always: For background tracking (future feature)
 
-Join our community of developers creating universal apps.
+## Testing
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- Test on physical iOS device for accurate GPS tracking
+- Simulator has limited location simulation capabilities
+- Use different trails to test trail management
+- Test pause/resume during active runs
+
+## Troubleshooting
+
+### Firebase not working
+- Ensure `GoogleService-Info.plist` is in correct location
+- Rebuild iOS app after adding Firebase files
+- Check Firebase Console for proper iOS app configuration
+
+### Location not tracking
+- Verify location permissions in iOS Settings
+- Check that permissions are requested in `app.json`
+- Ensure testing on device (not simulator) for best results
+
+### Apple Sign-In not working
+- Requires physical device (won't work in simulator)
+- Ensure Apple Sign-In is enabled in Firebase
+- Check Apple Developer Console configuration
+
+## Future Enhancements
+
+- Photo capture during runs (Run Snaps)
+- Voice memos during runs (Run Memos)
+- Route mapping with visual path
+- Statistics and analytics
+- Social sharing
+- Run challenges and goals
+- Android support
+
+## License
+
+Private project - All rights reserved
+
+## Author
+
+Built with ❤️ for runners who love journaling

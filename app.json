@@ -9,7 +9,15 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.bishesh-panthos.runner-notes",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "We need your location to track your runs and calculate pace.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "We need your location to track your runs in the background and calculate pace accurately.",
+        "UIBackgroundModes": [
+          "location"
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -19,7 +27,14 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ],
+      "package": "com.bisheshpanthos.runnernotes"
     },
     "web": {
       "output": "static",
@@ -38,7 +53,24 @@
             "backgroundColor": "#000000"
           }
         }
-      ]
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "useFrameworks": "static"
+          }
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow Runner Notes to use your location to track your runs.",
+          "locationAlwaysPermission": "Allow Runner Notes to use your location to track your runs in the background.",
+          "locationWhenInUsePermission": "Allow Runner Notes to use your location to track your runs."
+        }
+      ],
+      "expo-apple-authentication"
     ],
     "experiments": {
       "typedRoutes": true,

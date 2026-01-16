@@ -51,3 +51,39 @@ export const Fonts = Platform.select({
     mono: "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
   },
 });
+
+// Runner Notes Dark Theme
+export const runnerTheme = {
+  colors: {
+    background: '#0A0A0A',
+    surface: '#1A1A1A',
+    border: '#2A2A2A',
+    textPrimary: '#FFFFFF',
+    textSecondary: '#888888',
+    accent: '#00D4AA',
+    accentDark: '#00B38F',
+    error: '#FF4444',
+    success: '#00D4AA',
+  },
+  spacing: {
+    xs: 4,
+    sm: 8,
+    md: 16,
+    lg: 24,
+    xl: 32,
+  },
+  borderRadius: {
+    sm: 8,
+    md: 12,
+    lg: 16,
+    xl: 24,
+  },
+  fontSize: {
+    xs: 12,
+    sm: 14,
+    md: 16,
+    lg: 20,
+    xl: 24,
+    xxl: 32,
+  },
+};
