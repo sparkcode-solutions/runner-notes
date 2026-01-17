@@ -14,18 +14,28 @@ import { useAuth } from '@/lib/auth-context';
 import { TrailSelector } from '@/components/TrailSelector';
 import { PaceDisplay } from '@/components/PaceDisplay';
 import { RunControls } from '@/components/RunControls';
+import { CameraCapture } from '@/components/CameraCapture';
 import { Ionicons } from '@expo/vector-icons';
 import {
   requestLocationPermissions,
   startLocationTracking,
+  getCurrentLocation,
   calculateDistance,
   calculatePace,
   type LocationCoords,
 } from '@/lib/location';
-import { createRunMoment, completeRunMoment, type PacePoint } from '@/lib/firestore';
+import { createRunMomentRecord, completeRunMomentRecord } from '@/lib/hooks';
+import { useRunSnaps } from '@/lib/hooks';
 import type { LocationSubscription } from 'expo-location';
 
 type RunStatus = 'idle' | 'active' | 'paused';
+
+interface PacePoint {
+  timestamp: number;
+  pace: number;
+  lat: number;
+  lng: number;
+}
 
 export default function CreateRunScreen() {
   const { user } = useAuth();
@@ -40,11 +50,18 @@ export default function CreateRunScreen() {
   const [runMomentId, setRunMomentId] = useState<string | null>(null);
   const [paceHistory, setPaceHistory] = useState<PacePoint[]>([]);
   
+  const [showCamera, setShowCamera] = useState(false);
+  
   const locationSubscriptionRef = useRef<LocationSubscription | null>(null);
   const lastLocationRef = useRef<LocationCoords | null>(null);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const startTimeRef = useRef<number | null>(null);
   const pausedDurationRef = useRef<number>(0);
+  const totalDistanceRef = useRef<number>(0); // Track cumulative distance in ref
+  const currentDurationRef = useRef<number>(0); // Track current duration in ref
+
+  // Run snaps hook
+  const { addSnap, snaps } = useRunSnaps({ runMomentId });
 
   useEffect(() => {
     return () => {
@@ -61,29 +78,45 @@ export default function CreateRunScreen() {
   const handleLocationUpdate = (location: LocationCoords) => {
     if (status !== 'active') return;
 
-    if (lastLocationRef.current) {
-      const distanceDelta = calculateDistance(
-        lastLocationRef.current.latitude,
-        lastLocationRef.current.longitude,
-        location.latitude,
-        location.longitude
-      );
-
-      const newDistance = distance + distanceDelta;
-      setDistance(newDistance);
-
-      const currentPace = calculatePace(newDistance, duration);
-      setPace(currentPace);
-
-      const pacePoint: PacePoint = {
-        timestamp: location.timestamp,
-        pace: currentPace,
-        lat: location.latitude,
-        lng: location.longitude,
-      };
-      setPaceHistory((prev) => [...prev, pacePoint]);
+    // If this is the first location, just store it and return
+    if (!lastLocationRef.current) {
+      lastLocationRef.current = location;
+      return;
     }
 
+    // Calculate distance delta from last location
+    const distanceDelta = calculateDistance(
+      lastLocationRef.current.latitude,
+      lastLocationRef.current.longitude,
+      location.latitude,
+      location.longitude
+    );
+
+    // Only add distance if it's significant (filter out GPS noise)
+    // GPS can have small errors, so ignore very small movements
+    if (distanceDelta > 1) { // Only count movements > 1 meter
+      // Update cumulative distance using ref to avoid stale closure
+      totalDistanceRef.current += distanceDelta;
+      const newDistance = totalDistanceRef.current;
+      setDistance(newDistance);
+
+      // Calculate pace using duration from ref (always current)
+      const currentDuration = currentDurationRef.current;
+      if (newDistance > 0 && currentDuration > 0) {
+        const currentPace = calculatePace(newDistance, currentDuration);
+        setPace(currentPace);
+
+        const pacePoint: PacePoint = {
+          timestamp: location.timestamp,
+          pace: currentPace,
+          lat: location.latitude,
+          lng: location.longitude,
+        };
+        setPaceHistory((prev) => [...prev, pacePoint]);
+      }
+    }
+
+    // Update last location
     lastLocationRef.current = location;
   };
 
@@ -106,9 +139,25 @@ export default function CreateRunScreen() {
     }
 
     try {
-      // Create run moment in Firestore
-      const momentId = await createRunMoment(user.uid, selectedTrailId, selectedTrailName);
+      // Reset distance tracking
+      totalDistanceRef.current = 0;
+      currentDurationRef.current = 0;
+      setDistance(0);
+      setDuration(0);
+      setPace(0);
+      setPaceHistory([]);
+      lastLocationRef.current = null;
+      pausedDurationRef.current = 0;
+
+      // Create run moment in local database
+      const momentId = await createRunMomentRecord(user.id, selectedTrailId, selectedTrailName);
       setRunMomentId(momentId);
+
+      // Get initial location first
+      const initialLocation = await getCurrentLocation();
+      if (initialLocation) {
+        lastLocationRef.current = initialLocation;
+      }
 
       // Start location tracking
       const subscription = await startLocationTracking(handleLocationUpdate);
@@ -119,7 +168,14 @@ export default function CreateRunScreen() {
       timerIntervalRef.current = setInterval(() => {
         if (startTimeRef.current) {
           const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000) - pausedDurationRef.current;
+          currentDurationRef.current = elapsed; // Update ref
           setDuration(elapsed);
+          
+          // Recalculate pace with updated duration
+          if (totalDistanceRef.current > 0) {
+            const currentPace = calculatePace(totalDistanceRef.current, elapsed);
+            setPace(currentPace);
+          }
         }
       }, 1000);
 
@@ -140,7 +196,7 @@ export default function CreateRunScreen() {
   const handleResume = () => {
     // Calculate paused duration
     if (startTimeRef.current) {
-      const pausedTime = Math.floor((Date.now() - startTimeRef.current) / 1000) - duration;
+      const pausedTime = Math.floor((Date.now() - startTimeRef.current) / 1000) - currentDurationRef.current;
       pausedDurationRef.current += pausedTime;
     }
 
@@ -148,7 +204,14 @@ export default function CreateRunScreen() {
     timerIntervalRef.current = setInterval(() => {
       if (startTimeRef.current) {
         const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000) - pausedDurationRef.current;
+        currentDurationRef.current = elapsed; // Update ref
         setDuration(elapsed);
+        
+        // Recalculate pace with updated duration
+        if (totalDistanceRef.current > 0) {
+          const currentPace = calculatePace(totalDistanceRef.current, elapsed);
+          setPace(currentPace);
+        }
       }
     }, 1000);
 
@@ -174,12 +237,14 @@ export default function CreateRunScreen() {
               clearInterval(timerIntervalRef.current);
             }
 
-            const avgPace = calculatePace(distance, duration);
+            // Use ref value for final distance to ensure accuracy
+            const finalDistance = totalDistanceRef.current;
+            const avgPace = calculatePace(finalDistance, duration);
 
             try {
-              await completeRunMoment(user.uid, runMomentId, {
+              await completeRunMomentRecord(runMomentId, {
                 duration,
-                distance,
+                distance: finalDistance,
                 avgPace,
                 paceHistory,
               });
@@ -210,6 +275,17 @@ export default function CreateRunScreen() {
     }
   };
 
+  const handleCaptureSnap = async (uri: string, caption?: string, fromGallery?: boolean) => {
+    try {
+      await addSnap(uri, caption, fromGallery);
+    } catch (error) {
+      console.error('Error saving snap:', error);
+      Alert.alert('Error', 'Failed to save snap');
+    }
+  };
+
+  const isRunning = status === 'active' || status === 'paused';
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -236,6 +312,14 @@ export default function CreateRunScreen() {
           <PaceDisplay distance={distance} duration={duration} pace={pace} />
         </View>
 
+        {/* Snap count indicator */}
+        {isRunning && snaps.length > 0 && (
+          <View style={styles.snapIndicator}>
+            <Ionicons name="camera" size={16} color={runnerTheme.colors.accent} />
+            <Text style={styles.snapCount}>{snaps.length} snap{snaps.length > 1 ? 's' : ''}</Text>
+          </View>
+        )}
+
         <View style={styles.controlsSection}>
           <RunControls
             status={status}
@@ -246,6 +330,24 @@ export default function CreateRunScreen() {
           />
         </View>
       </ScrollView>
+
+      {/* Floating camera button - only show during active run */}
+      {isRunning && (
+        <TouchableOpacity 
+          style={styles.cameraFab} 
+          onPress={() => setShowCamera(true)}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="camera" size={24} color="#fff" />
+        </TouchableOpacity>
+      )}
+
+      {/* Camera modal */}
+      <CameraCapture
+        visible={showCamera}
+        onClose={() => setShowCamera(false)}
+        onCapture={handleCaptureSnap}
+      />
     </SafeAreaView>
   );
 }
@@ -276,5 +378,28 @@ const styles = StyleSheet.create({
   controlsSection: {
     marginTop: runnerTheme.spacing.xl,
     alignItems: 'center',
+  },
+  snapIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: runnerTheme.spacing.md,
+  },
+  snapCount: {
+    fontSize: runnerTheme.fontSize.sm,
+    color: runnerTheme.colors.accent,
+    marginLeft: runnerTheme.spacing.xs,
+  },
+  cameraFab: {
+    position: 'absolute',
+    bottom: 120,
+    left: runnerTheme.spacing.lg,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: runnerTheme.colors.accent,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...runnerTheme.shadow.lg,
   },
 });

@@ -12,43 +12,39 @@ import {
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { runnerTheme } from '@/constants/theme';
-import { useAuth } from '@/lib/auth-context';
-import {
-  createJournal,
-  updateJournal,
-  deleteJournal,
-  getRunMoment,
-} from '@/lib/firestore';
+import { 
+  createJournalRecord, 
+  updateJournalRecord, 
+  deleteJournalRecord,
+  getJournalById,
+} from '@/lib/hooks';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function JournalEditorScreen() {
   const { id, runId } = useLocalSearchParams<{ id: string; runId: string }>();
-  const { user } = useAuth();
   const [content, setContent] = useState('');
   const [saving, setSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [journalId, setJournalId] = useState<string | null>(id === 'new' ? null : id);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isNewJournal = id === 'new';
 
   useEffect(() => {
-    if (!isNewJournal && user && id && runId) {
+    if (!isNewJournal && id) {
       // Load existing journal
-      getRunMoment(user.uid, runId)
-        .collection('journals')
-        .doc(id)
-        .get()
-        .then((doc) => {
-          if (doc.exists()) {
-            const data = doc.data();
-            setContent(data?.content || '');
-          }
-        });
+      const loadJournal = async () => {
+        const journal = await getJournalById(id);
+        if (journal) {
+          setContent(journal.content);
+        }
+      };
+      loadJournal();
     }
-  }, [id, runId, user, isNewJournal]);
+  }, [id, isNewJournal]);
 
   useEffect(() => {
     // Auto-save logic
-    if (!user || !runId) return;
+    if (!runId) return;
 
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
@@ -59,13 +55,14 @@ export default function JournalEditorScreen() {
     saveTimeoutRef.current = setTimeout(async () => {
       setSaving(true);
       try {
-        if (isNewJournal) {
-          const journalId = await createJournal(user.uid, runId, content);
+        if (!journalId) {
+          // Create new journal
+          const newId = await createJournalRecord(runId, content);
+          setJournalId(newId);
           setLastSaved(new Date());
-          // Update URL to reflect the created journal
-          router.replace(`/run/journal/${journalId}?runId=${runId}`);
         } else {
-          await updateJournal(user.uid, runId, id, content);
+          // Update existing journal
+          await updateJournalRecord(journalId, content);
           setLastSaved(new Date());
         }
       } catch (error) {
@@ -80,10 +77,10 @@ export default function JournalEditorScreen() {
         clearTimeout(saveTimeoutRef.current);
       }
     };
-  }, [content, user, runId, id, isNewJournal]);
+  }, [content, runId, journalId]);
 
   const handleDelete = () => {
-    if (isNewJournal) {
+    if (!journalId) {
       router.back();
       return;
     }
@@ -94,9 +91,8 @@ export default function JournalEditorScreen() {
         text: 'Delete',
         style: 'destructive',
         onPress: async () => {
-          if (!user || !runId) return;
           try {
-            await deleteJournal(user.uid, runId, id);
+            await deleteJournalRecord(journalId);
             router.back();
           } catch (error) {
             Alert.alert('Error', 'Failed to delete journal');

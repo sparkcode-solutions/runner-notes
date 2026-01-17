@@ -1,86 +1,68 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { auth } from './firebase';
-import type { FirebaseAuthTypes } from '@react-native-firebase/auth';
-import * as AppleAuthentication from 'expo-apple-authentication';
-import { createUser } from './firestore';
+import * as SecureStore from 'expo-secure-store';
+import { eq } from 'drizzle-orm';
+import { db } from './db/client';
+import { users, type User } from './db/schema';
+
+const SECURE_STORE_USER_KEY = 'runner_notes_user_id';
+const LOCAL_USER_ID = 'local-user';
 
 interface AuthContextType {
-  user: FirebaseAuthTypes.User | null;
+  user: User | null;
   loading: boolean;
-  signInWithApple: () => Promise<void>;
-  signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<FirebaseAuthTypes.User | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Auto-create local user on mount (skipping authentication)
   useEffect(() => {
-    const unsubscribe = auth().onAuthStateChanged((user) => {
-      setUser(user);
-      setLoading(false);
-    });
+    const initLocalUser = async () => {
+      try {
+        // Check if local user exists
+        const [existingUser] = await db
+          .select()
+          .from(users)
+          .where(eq(users.id, LOCAL_USER_ID));
 
-    return unsubscribe;
+        if (existingUser) {
+          setUser(existingUser);
+        } else {
+          // Create local user
+          const now = new Date();
+          await db.insert(users).values({
+            id: LOCAL_USER_ID,
+            appleUserId: 'local',
+            email: null,
+            displayName: 'Runner',
+            createdAt: now,
+          });
+
+          const [newUser] = await db
+            .select()
+            .from(users)
+            .where(eq(users.id, LOCAL_USER_ID));
+
+          setUser(newUser);
+        }
+
+        // Store user ID for consistency
+        await SecureStore.setItemAsync(SECURE_STORE_USER_KEY, LOCAL_USER_ID);
+      } catch (error) {
+        console.error('Error initializing local user:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initLocalUser();
   }, []);
 
-  const signInWithApple = async () => {
-    try {
-      // Start the sign-in request
-      const credential = await AppleAuthentication.signInAsync({
-        requestedScopes: [
-          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-          AppleAuthentication.AppleAuthenticationScope.EMAIL,
-        ],
-      });
-
-      // Create a Firebase credential from the Apple credential
-      const { identityToken } = credential;
-      if (!identityToken) {
-        throw new Error('No identity token returned from Apple');
-      }
-
-      const appleCredential = auth.AppleAuthProvider.credential(identityToken);
-
-      // Sign in to Firebase with the Apple credential
-      const userCredential = await auth().signInWithCredential(appleCredential);
-
-      // Create user document in Firestore if it's a new user
-      if (userCredential.additionalUserInfo?.isNewUser && userCredential.user) {
-        const displayName = credential.fullName
-          ? `${credential.fullName.givenName || ''} ${credential.fullName.familyName || ''}`.trim()
-          : undefined;
-
-        await createUser(
-          userCredential.user.uid,
-          userCredential.user.email || '',
-          displayName
-        );
-      }
-    } catch (error: any) {
-      if (error.code === 'ERR_CANCELED') {
-        // User canceled the sign-in flow
-        console.log('User canceled Apple Sign-In');
-      } else {
-        console.error('Error signing in with Apple:', error);
-        throw error;
-      }
-    }
-  };
-
-  const signOut = async () => {
-    try {
-      await auth().signOut();
-    } catch (error) {
-      console.error('Error signing out:', error);
-      throw error;
-    }
-  };
-
   return (
-    <AuthContext.Provider value={{ user, loading, signInWithApple, signOut }}>
+    <AuthContext.Provider value={{ user, loading }}>
       {children}
     </AuthContext.Provider>
   );

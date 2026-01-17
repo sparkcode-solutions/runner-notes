@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -7,44 +7,31 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   SafeAreaView,
+  RefreshControl,
 } from 'react-native';
 import { router } from 'expo-router';
 import { runnerTheme } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
-import { getRunMoments, type RunMoment } from '@/lib/firestore';
+import { useRunMoments } from '@/lib/hooks';
 import { RunMomentCard } from '@/components/RunMomentCard';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function HomeScreen() {
-  const { user, signOut } = useAuth();
-  const [runMoments, setRunMoments] = useState<RunMoment[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+  const { runMoments, loading, refetch } = useRunMoments({ userId: user?.id ?? null });
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    if (!user) return;
-
-    const unsubscribe = getRunMoments(user.uid).onSnapshot((snapshot) => {
-      const moments = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as RunMoment[];
-      setRunMoments(moments);
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, [user]);
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await refetch();
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const handleStartRun = () => {
     router.push('/run/create');
-  };
-
-  const handleSignOut = async () => {
-    try {
-      await signOut();
-    } catch (error) {
-      console.error('Error signing out:', error);
-    }
   };
 
   if (loading) {
@@ -59,9 +46,7 @@ export default function HomeScreen() {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Run Moments</Text>
-        <TouchableOpacity onPress={handleSignOut}>
-          <Ionicons name="exit-outline" size={24} color={runnerTheme.colors.textSecondary} />
-        </TouchableOpacity>
+        <View style={{ width: 24 }} />
       </View>
 
       {runMoments.length === 0 ? (
@@ -74,9 +59,23 @@ export default function HomeScreen() {
         <FlatList
           data={runMoments}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <RunMomentCard runMoment={item} />}
+          renderItem={({ item }) => (
+            <RunMomentCard 
+              runMoment={item} 
+              journalPreview={item.journalPreview}
+              featuredSnapUri={item.featuredSnapUri}
+            />
+          )}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={runnerTheme.colors.accent}
+              colors={[runnerTheme.colors.accent]}
+            />
+          }
         />
       )}
 

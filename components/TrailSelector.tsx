@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -7,14 +7,16 @@ import {
   Modal,
   FlatList,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { runnerTheme } from '../constants/theme';
 import { useAuth } from '../lib/auth-context';
-import { getTrails, createTrail, type Trail } from '../lib/firestore';
+import { useTrails } from '../lib/hooks';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
-import { Card } from './ui/card';
 import { Ionicons } from '@expo/vector-icons';
+import type { Trail } from '../lib/db/schema';
 
 interface TrailSelectorProps {
   selectedTrailId: string | null;
@@ -28,25 +30,11 @@ export const TrailSelector: React.FC<TrailSelectorProps> = ({
   onSelectTrail,
 }) => {
   const { user } = useAuth();
+  const { trails, createTrail } = useTrails({ userId: user?.id ?? null });
   const [modalVisible, setModalVisible] = useState(false);
-  const [trails, setTrails] = useState<Trail[]>([]);
   const [newTrailName, setNewTrailName] = useState('');
   const [addingNew, setAddingNew] = useState(false);
   const [creating, setCreating] = useState(false);
-
-  useEffect(() => {
-    if (!user) return;
-
-    const unsubscribe = getTrails(user.uid).onSnapshot((snapshot) => {
-      const trailsList = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as Trail[];
-      setTrails(trailsList);
-    });
-
-    return () => unsubscribe();
-  }, [user]);
 
   const handleSelectTrail = (trail: Trail) => {
     onSelectTrail(trail.id, trail.name);
@@ -54,14 +42,14 @@ export const TrailSelector: React.FC<TrailSelectorProps> = ({
   };
 
   const handleCreateTrail = async () => {
-    if (!user || !newTrailName.trim()) {
+    if (!newTrailName.trim()) {
       Alert.alert('Error', 'Please enter a trail name');
       return;
     }
 
     setCreating(true);
     try {
-      const trailId = await createTrail(user.uid, newTrailName.trim());
+      const trailId = await createTrail(newTrailName.trim());
       onSelectTrail(trailId, newTrailName.trim());
       setNewTrailName('');
       setAddingNew(false);
@@ -100,7 +88,10 @@ export const TrailSelector: React.FC<TrailSelectorProps> = ({
         transparent={true}
         onRequestClose={() => setModalVisible(false)}
       >
-        <View style={styles.modalContainer}>
+        <KeyboardAvoidingView 
+          style={styles.modalContainer}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Select Trail</Text>
@@ -140,6 +131,7 @@ export const TrailSelector: React.FC<TrailSelectorProps> = ({
                     <Text style={styles.emptyText}>No trails yet</Text>
                   }
                   style={styles.trailList}
+                  keyboardShouldPersistTaps="handled"
                 />
 
                 <Button
@@ -179,7 +171,7 @@ export const TrailSelector: React.FC<TrailSelectorProps> = ({
               </View>
             )}
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </>
   );

@@ -14,9 +14,13 @@
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "We need your location to track your runs and calculate pace.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "We need your location to track your runs in the background and calculate pace accurately.",
+        "NSCameraUsageDescription": "We need camera access to capture Run Snaps during your runs.",
+        "NSPhotoLibraryUsageDescription": "We need photo library access to save and select Run Snaps.",
         "UIBackgroundModes": [
+          "location",
           "location"
-        ]
+        ],
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -31,8 +35,10 @@
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION"
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.RECORD_AUDIO"
       ],
       "package": "com.bisheshpanthos.runnernotes"
     },
@@ -70,11 +76,29 @@
           "locationWhenInUsePermission": "Allow Runner Notes to use your location to track your runs."
         }
       ],
-      "expo-apple-authentication"
+      "expo-apple-authentication",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Runner Notes to capture Run Snaps during your runs."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Runner Notes to access your photos to add Run Snaps."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "01f17c60-29ef-465c-bf99-1a6b214bb9ba"
+      }
     }
   }
 }
