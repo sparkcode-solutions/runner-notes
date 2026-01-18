@@ -1,24 +1,48 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import * as SecureStore from 'expo-secure-store';
 import { eq } from 'drizzle-orm';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import { db } from './db/client';
 import { users, type User } from './db/schema';
 
-const SECURE_STORE_USER_KEY = 'runner_notes_user_id';
 const LOCAL_USER_ID = 'local-user';
 
 interface AuthContextType {
-  user: User | null;
+  user: User;
   loading: boolean;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Default user object (always available)
+const DEFAULT_USER: User = {
+  id: LOCAL_USER_ID,
+  appleUserId: 'local',
+  email: null,
+  displayName: 'Runner',
+  coachMode: null,
+  createdAt: new Date(),
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User>(DEFAULT_USER);
   const [loading, setLoading] = useState(true);
 
-  // Auto-create local user on mount (skipping authentication)
+  const refreshUser = async () => {
+    try {
+      const [existingUser] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, LOCAL_USER_ID));
+
+      if (existingUser) {
+        setUser(existingUser);
+      }
+    } catch (error) {
+      console.error('Error refreshing user:', error);
+    }
+  };
+
+  // Auto-create local user on mount (no authentication required)
   useEffect(() => {
     const initLocalUser = async () => {
       try {
@@ -46,13 +70,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             .from(users)
             .where(eq(users.id, LOCAL_USER_ID));
 
-          setUser(newUser);
+          if (newUser) {
+            setUser(newUser);
+          } else {
+            setUser(DEFAULT_USER);
+          }
         }
-
-        // Store user ID for consistency
-        await SecureStore.setItemAsync(SECURE_STORE_USER_KEY, LOCAL_USER_ID);
       } catch (error) {
         console.error('Error initializing local user:', error);
+        // Even on error, use default user
+        setUser(DEFAULT_USER);
       } finally {
         setLoading(false);
       }
@@ -62,7 +89,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading }}>
+    <AuthContext.Provider value={{ user, loading, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

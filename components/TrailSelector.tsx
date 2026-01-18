@@ -30,7 +30,7 @@ export const TrailSelector: React.FC<TrailSelectorProps> = ({
   onSelectTrail,
 }) => {
   const { user } = useAuth();
-  const { trails, createTrail } = useTrails({ userId: user?.id ?? null });
+  const { trails, createTrail } = useTrails({ userId: user.id });
   const [modalVisible, setModalVisible] = useState(false);
   const [newTrailName, setNewTrailName] = useState('');
   const [addingNew, setAddingNew] = useState(false);

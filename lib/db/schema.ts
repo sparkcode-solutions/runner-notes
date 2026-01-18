@@ -1,5 +1,5 @@
-import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
 import { relations } from 'drizzle-orm';
+import { integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 // Users table - stores Apple Sign-In user info
 export const users = sqliteTable('users', {
@@ -7,6 +7,7 @@ export const users = sqliteTable('users', {
   appleUserId: text('apple_user_id').notNull().unique(),
   email: text('email'),
   displayName: text('display_name'),
+  coachMode: text('coach_mode', { enum: ['mindful', 'performance'] }),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 });
 
@@ -30,6 +31,11 @@ export const runMoments = sqliteTable('run_moments', {
   distance: real('distance').notNull().default(0), // meters
   avgPace: real('avg_pace').notNull().default(0), // min/km
   status: text('status', { enum: ['active', 'paused', 'completed'] }).notNull().default('active'),
+  coachNote: text('coach_note'), // AI-generated reflection from "The Reflection"
+  preRunSuggestion: text('pre_run_suggestion'), // Why this trail was suggested
+  sentimentScore: real('sentiment_score'), // -1.0 to 1.0
+  runVibe: text('run_vibe'), // 'heavy', 'flow', 'struggle', etc.
+  weatherCondition: text('weather_condition'),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 });
 

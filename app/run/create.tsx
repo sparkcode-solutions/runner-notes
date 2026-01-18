@@ -1,32 +1,35 @@
-import React, { useState, useEffect, useRef } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  SafeAreaView,
-  TouchableOpacity,
-  Alert,
-  ScrollView,
-} from 'react-native';
-import { router } from 'expo-router';
-import { runnerTheme } from '@/constants/theme';
-import { useAuth } from '@/lib/auth-context';
-import { TrailSelector } from '@/components/TrailSelector';
+import { CameraCapture } from '@/components/CameraCapture';
 import { PaceDisplay } from '@/components/PaceDisplay';
 import { RunControls } from '@/components/RunControls';
-import { CameraCapture } from '@/components/CameraCapture';
-import { Ionicons } from '@expo/vector-icons';
+import { TrailRecommender } from '@/components/TrailRecommender';
+import { TrailSelector } from '@/components/TrailSelector';
+import { runnerTheme } from '@/constants/theme';
+import { useAuth } from '@/lib/auth-context';
+import { useCoach } from '@/lib/coach-context';
+import { completeRunMomentRecord, createRunMomentRecord, useRunMoments, useRunSnaps } from '@/lib/hooks';
 import {
-  requestLocationPermissions,
-  startLocationTracking,
-  getCurrentLocation,
   calculateDistance,
   calculatePace,
+  getCurrentLocation,
+  requestLocationPermissions,
+  startLocationTracking,
+  stopLocationTracking,
   type LocationCoords,
 } from '@/lib/location';
-import { createRunMomentRecord, completeRunMomentRecord } from '@/lib/hooks';
-import { useRunSnaps } from '@/lib/hooks';
-import type { LocationSubscription } from 'expo-location';
+import { ReflectionEngine } from '@/lib/reflection';
+import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  Alert,
+  DeviceEventEmitter,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 
 type RunStatus = 'idle' | 'active' | 'paused';
 
@@ -39,26 +42,52 @@ interface PacePoint {
 
 export default function CreateRunScreen() {
   const { user } = useAuth();
+  const { greeting } = useCoach();
   const [status, setStatus] = useState<RunStatus>('idle');
+  const statusRef = useRef<RunStatus>('idle');
+
+  // Sync ref with state effectively
+  const updateStatus = (newStatus: RunStatus) => {
+    setStatus(newStatus);
+    statusRef.current = newStatus;
+  };
+
   const [selectedTrailId, setSelectedTrailId] = useState<string | null>(null);
   const [selectedTrailName, setSelectedTrailName] = useState<string | null>(null);
-  
+
   const [distance, setDistance] = useState(0); // meters
   const [duration, setDuration] = useState(0); // seconds
   const [pace, setPace] = useState(0); // min/km
-  
+
   const [runMomentId, setRunMomentId] = useState<string | null>(null);
   const [paceHistory, setPaceHistory] = useState<PacePoint[]>([]);
-  
+
   const [showCamera, setShowCamera] = useState(false);
-  
-  const locationSubscriptionRef = useRef<LocationSubscription | null>(null);
+  const eventSubscriptionRef = useRef<any>(null); // Replaces locationSubscriptionRef
   const lastLocationRef = useRef<LocationCoords | null>(null);
-  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const timerIntervalRef = useRef<any>(null);
   const startTimeRef = useRef<number | null>(null);
   const pausedDurationRef = useRef<number>(0);
   const totalDistanceRef = useRef<number>(0); // Track cumulative distance in ref
   const currentDurationRef = useRef<number>(0); // Track current duration in ref
+
+  // Fetch recent history for AI recommendation
+  const { runMoments: history } = useRunMoments({ userId: user.id });
+  const [recommendation, setRecommendation] = useState<{
+    type: 'recovery' | 'steady' | 'push';
+    text: string;
+    reason: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (history) {
+      const loadSuggestion = async () => {
+        const suggestion = await ReflectionEngine.getRunSuggestion(history);
+        setRecommendation(suggestion);
+      };
+      loadSuggestion();
+    }
+  }, [history]);
 
   // Run snaps hook
   const { addSnap, snaps } = useRunSnaps({ runMomentId });
@@ -66,9 +95,10 @@ export default function CreateRunScreen() {
   useEffect(() => {
     return () => {
       // Cleanup on unmount
-      if (locationSubscriptionRef.current) {
-        locationSubscriptionRef.current.remove();
+      if (eventSubscriptionRef.current) {
+        eventSubscriptionRef.current.remove();
       }
+      stopLocationTracking(); // Ensure background task stops if component unmounts (optional, but good for testing)
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current);
       }
@@ -76,10 +106,15 @@ export default function CreateRunScreen() {
   }, []);
 
   const handleLocationUpdate = (location: LocationCoords) => {
-    if (status !== 'active') return;
+    // Check ref instead of state to avoid stale closure
+    if (statusRef.current !== 'active') {
+      // console.log('[Run] Ignored update (not active)');
+      return;
+    }
 
     // If this is the first location, just store it and return
     if (!lastLocationRef.current) {
+      console.log('[Run] First location fix set:', location);
       lastLocationRef.current = location;
       return;
     }
@@ -91,6 +126,8 @@ export default function CreateRunScreen() {
       location.latitude,
       location.longitude
     );
+
+    console.log(`[Run] Delta: ${distanceDelta.toFixed(2)}m | Pace: ${pace.toFixed(2)} | Total: ${totalDistanceRef.current.toFixed(2)}m`);
 
     // Only add distance if it's significant (filter out GPS noise)
     // GPS can have small errors, so ignore very small movements
@@ -104,6 +141,7 @@ export default function CreateRunScreen() {
       const currentDuration = currentDurationRef.current;
       if (newDistance > 0 && currentDuration > 0) {
         const currentPace = calculatePace(newDistance, currentDuration);
+        console.log(`[Run] New Pace: ${currentPace.toFixed(2)} min/km`);
         setPace(currentPace);
 
         const pacePoint: PacePoint = {
@@ -114,6 +152,8 @@ export default function CreateRunScreen() {
         };
         setPaceHistory((prev) => [...prev, pacePoint]);
       }
+    } else {
+      // console.log('[Run] Micro-movement ignored (<1m)');
     }
 
     // Update last location
@@ -125,8 +165,6 @@ export default function CreateRunScreen() {
       Alert.alert('Select Trail', 'Please select a trail before starting');
       return;
     }
-
-    if (!user) return;
 
     // Request location permissions
     const hasPermissions = await requestLocationPermissions();
@@ -160,8 +198,12 @@ export default function CreateRunScreen() {
       }
 
       // Start location tracking
-      const subscription = await startLocationTracking(handleLocationUpdate);
-      locationSubscriptionRef.current = subscription;
+      const success = await startLocationTracking();
+      if (success) {
+        eventSubscriptionRef.current = DeviceEventEmitter.addListener('onLocationUpdate', handleLocationUpdate);
+      } else {
+        throw new Error('Failed to start tracking');
+      }
 
       // Start timer
       startTimeRef.current = Date.now();
@@ -170,7 +212,7 @@ export default function CreateRunScreen() {
           const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000) - pausedDurationRef.current;
           currentDurationRef.current = elapsed; // Update ref
           setDuration(elapsed);
-          
+
           // Recalculate pace with updated duration
           if (totalDistanceRef.current > 0) {
             const currentPace = calculatePace(totalDistanceRef.current, elapsed);
@@ -179,7 +221,7 @@ export default function CreateRunScreen() {
         }
       }, 1000);
 
-      setStatus('active');
+      updateStatus('active');
     } catch (error) {
       Alert.alert('Error', 'Failed to start run tracking');
       console.error('Error starting run:', error);
@@ -190,7 +232,7 @@ export default function CreateRunScreen() {
     if (timerIntervalRef.current) {
       clearInterval(timerIntervalRef.current);
     }
-    setStatus('paused');
+    updateStatus('paused');
   };
 
   const handleResume = () => {
@@ -206,7 +248,7 @@ export default function CreateRunScreen() {
         const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000) - pausedDurationRef.current;
         currentDurationRef.current = elapsed; // Update ref
         setDuration(elapsed);
-        
+
         // Recalculate pace with updated duration
         if (totalDistanceRef.current > 0) {
           const currentPace = calculatePace(totalDistanceRef.current, elapsed);
@@ -215,7 +257,7 @@ export default function CreateRunScreen() {
       }
     }, 1000);
 
-    setStatus('active');
+    updateStatus('active');
   };
 
   const handleStop = () => {
@@ -227,12 +269,13 @@ export default function CreateRunScreen() {
         {
           text: 'Complete',
           onPress: async () => {
-            if (!user || !runMomentId) return;
+            if (!runMomentId) return;
 
             // Stop tracking
-            if (locationSubscriptionRef.current) {
-              locationSubscriptionRef.current.remove();
+            if (eventSubscriptionRef.current) {
+              eventSubscriptionRef.current.remove();
             }
+            await stopLocationTracking();
             if (timerIntervalRef.current) {
               clearInterval(timerIntervalRef.current);
             }
@@ -292,11 +335,21 @@ export default function CreateRunScreen() {
         <TouchableOpacity onPress={handleBack}>
           <Ionicons name="arrow-back" size={28} color={runnerTheme.colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.title}>New Run</Text>
+        <View style={{ alignItems: 'center' }}>
+          <Text style={styles.title}>New Run</Text>
+          <Text style={styles.subtitle}>{greeting}</Text>
+        </View>
         <View style={{ width: 28 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {/* AI Recommendation - only show when idle */}
+        {status === 'idle' && recommendation && (
+          <View style={styles.section}>
+            <TrailRecommender suggestion={recommendation} />
+          </View>
+        )}
+
         <View style={styles.section}>
           <TrailSelector
             selectedTrailId={selectedTrailId}
@@ -333,8 +386,8 @@ export default function CreateRunScreen() {
 
       {/* Floating camera button - only show during active run */}
       {isRunning && (
-        <TouchableOpacity 
-          style={styles.cameraFab} 
+        <TouchableOpacity
+          style={styles.cameraFab}
           onPress={() => setShowCamera(true)}
           activeOpacity={0.8}
         >
@@ -368,6 +421,13 @@ const styles = StyleSheet.create({
     fontSize: runnerTheme.fontSize.xl,
     fontWeight: '700',
     color: runnerTheme.colors.textPrimary,
+  },
+  subtitle: {
+    fontSize: 12,
+    color: runnerTheme.colors.textSecondary,
+    marginTop: 2,
+    maxWidth: 200,
+    textAlign: 'center',
   },
   content: {
     padding: runnerTheme.spacing.lg,

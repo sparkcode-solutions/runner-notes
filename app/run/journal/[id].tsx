@@ -11,23 +11,53 @@ import {
   Platform,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { runnerTheme } from '@/constants/theme';
+import { useTheme } from '@/lib/theme';
+import { ReflectionEngine } from '@/lib/reflection';
 import { 
   createJournalRecord, 
   updateJournalRecord, 
   deleteJournalRecord,
   getJournalById,
 } from '@/lib/hooks';
+import { db } from '@/lib/db/client';
+import { runMoments } from '@/lib/db/schema';
+import { eq } from 'drizzle-orm';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function JournalEditorScreen() {
   const { id, runId } = useLocalSearchParams<{ id: string; runId: string }>();
+  const theme = useTheme();
   const [content, setContent] = useState('');
   const [saving, setSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [journalId, setJournalId] = useState<string | null>(id === 'new' ? null : id);
+  const [vibePlaceholder, setVibePlaceholder] = useState('Write your thoughts about this run...');
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isNewJournal = id === 'new';
+
+  // Load vibe prompt based on run context
+  useEffect(() => {
+    if (runId) {
+      const loadVibePrompt = async () => {
+        try {
+          const [runMoment] = await db
+            .select()
+            .from(runMoments)
+            .where(eq(runMoments.id, runId))
+            .limit(1);
+          
+          if (runMoment) {
+            const context = ReflectionEngine.buildContext(runMoment);
+            const prompt = ReflectionEngine.generateVibePrompt(context);
+            setVibePlaceholder(prompt);
+          }
+        } catch (error) {
+          console.error('Error loading vibe prompt:', error);
+        }
+      };
+      loadVibePrompt();
+    }
+  }, [runId]);
 
   useEffect(() => {
     if (!isNewJournal && id) {
@@ -118,35 +148,35 @@ export default function JournalEditorScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <KeyboardAvoidingView
         style={styles.keyboardView}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <View style={styles.header}>
+        <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
           <TouchableOpacity onPress={handleBack}>
-            <Ionicons name="arrow-back" size={28} color={runnerTheme.colors.textPrimary} />
+            <Ionicons name="arrow-back" size={28} color={theme.colors.textPrimary} />
           </TouchableOpacity>
           <View style={styles.headerCenter}>
-            <Text style={styles.title}>Journal</Text>
+            <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Journal</Text>
             {lastSaved && (
-              <Text style={styles.savedText}>
+              <Text style={[styles.savedText, { color: theme.colors.accent }]}>
                 Saved {lastSaved.toLocaleTimeString()}
               </Text>
             )}
-            {saving && <Text style={styles.savingText}>Saving...</Text>}
+            {saving && <Text style={[styles.savingText, { color: theme.colors.textSecondary }]}>Saving...</Text>}
           </View>
           <TouchableOpacity onPress={handleDelete}>
-            <Ionicons name="trash-outline" size={24} color={runnerTheme.colors.error} />
+            <Ionicons name="trash-outline" size={24} color={theme.colors.error} />
           </TouchableOpacity>
         </View>
 
         <TextInput
-          style={styles.textInput}
+          style={[styles.textInput, { color: theme.colors.textPrimary }]}
           value={content}
           onChangeText={setContent}
-          placeholder="Write your thoughts about this run..."
-          placeholderTextColor={runnerTheme.colors.textSecondary}
+          placeholder={vibePlaceholder}
+          placeholderTextColor={theme.colors.textSecondary}
           multiline
           autoFocus
           textAlignVertical="top"
@@ -159,7 +189,6 @@ export default function JournalEditorScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: runnerTheme.colors.background,
   },
   keyboardView: {
     flex: 1,
@@ -168,35 +197,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: runnerTheme.spacing.lg,
-    paddingVertical: runnerTheme.spacing.md,
+    paddingHorizontal: 24,
+    paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: runnerTheme.colors.border,
   },
   headerCenter: {
     flex: 1,
     alignItems: 'center',
   },
   title: {
-    fontSize: runnerTheme.fontSize.lg,
+    fontSize: 17,
     fontWeight: '600',
-    color: runnerTheme.colors.textPrimary,
   },
   savedText: {
-    fontSize: runnerTheme.fontSize.xs,
-    color: runnerTheme.colors.accent,
+    fontSize: 11,
     marginTop: 2,
   },
   savingText: {
-    fontSize: runnerTheme.fontSize.xs,
-    color: runnerTheme.colors.textSecondary,
+    fontSize: 11,
     marginTop: 2,
   },
   textInput: {
     flex: 1,
-    padding: runnerTheme.spacing.lg,
-    fontSize: runnerTheme.fontSize.md,
-    color: runnerTheme.colors.textPrimary,
+    padding: 24,
+    fontSize: 15,
     fontFamily: Platform.OS === 'ios' ? 'System' : 'Roboto',
   },
 });

@@ -1,7 +1,7 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { runnerTheme } from '../constants/theme';
 import { Ionicons } from '@expo/vector-icons';
+import React from 'react';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { runnerTheme } from '../constants/theme';
 
 interface RunControlsProps {
   status: 'idle' | 'active' | 'paused';
@@ -26,7 +26,7 @@ export const RunControls: React.FC<RunControlsProps> = ({
           onPress={onStart}
           activeOpacity={0.8}
         >
-          <Ionicons name="play" size={32} color={runnerTheme.colors.background} />
+          <Ionicons name="play" size={24} color={runnerTheme.colors.accent} />
           <Text style={styles.startText}>Start Run</Text>
         </TouchableOpacity>
       </View>
@@ -70,10 +70,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   startButton: {
-    backgroundColor: runnerTheme.colors.accent,
-    width: 200,
-    height: 200,
-    borderRadius: 100,
+    backgroundColor: runnerTheme.colors.surface,
+    width: 240,
+    height: 64,
+    borderRadius: 32,
+    flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
@@ -81,12 +82,16 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 8,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: runnerTheme.colors.accent,
   },
   startText: {
-    fontSize: runnerTheme.fontSize.lg,
-    fontWeight: '700',
-    color: runnerTheme.colors.background,
-    marginTop: runnerTheme.spacing.sm,
+    fontSize: 18,
+    fontWeight: '600',
+    color: runnerTheme.colors.accent,
+    textTransform: 'uppercase',
+    letterSpacing: 2,
   },
   controls: {
     flexDirection: 'row',

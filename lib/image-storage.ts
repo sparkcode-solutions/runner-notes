@@ -32,18 +32,32 @@ export async function saveSnapImage(
   sourceUri: string,
   runMomentId: string
 ): Promise<string> {
-  await ensureSnapsDirectory();
+  console.log(`[ImageStorage] saveSnapImage called for source: ${sourceUri}`);
   
-  const filename = generateSnapFilename(runMomentId);
-  const destinationUri = `${SNAPS_DIRECTORY}${filename}`;
-  
-  // Move the file from cache to permanent storage
-  await FileSystem.moveAsync({
-    from: sourceUri,
-    to: destinationUri,
-  });
-  
-  return destinationUri;
+  try {
+    await ensureSnapsDirectory();
+    
+    const filename = generateSnapFilename(runMomentId);
+    const destinationUri = `${SNAPS_DIRECTORY}${filename}`;
+    
+    console.log(`[ImageStorage] Copying from ${sourceUri} to ${destinationUri}`);
+
+    // Create directory check again inside just to be sure
+    const dirInfo = await FileSystem.getInfoAsync(SNAPS_DIRECTORY);
+    console.log(`[ImageStorage] Directory exists: ${dirInfo.exists}, isDir: ${dirInfo.isDirectory}`);
+
+    // Copy the file from cache to permanent storage (safer than move)
+    await FileSystem.copyAsync({
+      from: sourceUri,
+      to: destinationUri,
+    });
+    
+    console.log(`[ImageStorage] Success. Saved to ${destinationUri}`);
+    return destinationUri;
+  } catch (error) {
+    console.error('[ImageStorage] Error in saveSnapImage:', error);
+    throw error;
+  }
 }
 
 /**
@@ -53,17 +67,27 @@ export async function copySnapImage(
   sourceUri: string,
   runMomentId: string
 ): Promise<string> {
-  await ensureSnapsDirectory();
-  
-  const filename = generateSnapFilename(runMomentId);
-  const destinationUri = `${SNAPS_DIRECTORY}${filename}`;
-  
-  await FileSystem.copyAsync({
-    from: sourceUri,
-    to: destinationUri,
-  });
-  
-  return destinationUri;
+  console.log(`[ImageStorage] copySnapImage called for source: ${sourceUri}`);
+
+  try {
+    await ensureSnapsDirectory();
+    
+    const filename = generateSnapFilename(runMomentId);
+    const destinationUri = `${SNAPS_DIRECTORY}${filename}`;
+    
+    console.log(`[ImageStorage] Copying from ${sourceUri} to ${destinationUri}`);
+
+    await FileSystem.copyAsync({
+      from: sourceUri,
+      to: destinationUri,
+    });
+    
+    console.log(`[ImageStorage] Success. Saved to ${destinationUri}`);
+    return destinationUri;
+  } catch (error) {
+    console.error('[ImageStorage] Error in copySnapImage:', error);
+    throw error;
+  }
 }
 
 /**

@@ -36,29 +36,69 @@ export const getCurrentLocation = async (): Promise<LocationCoords | null> => {
   }
 };
 
-export const startLocationTracking = async (
-  callback: (location: LocationCoords) => void
-): Promise<Location.LocationSubscription | null> => {
-  try {
-    const subscription = await Location.watchPositionAsync(
-      {
-        accuracy: Location.Accuracy.High,
-        timeInterval: 5000, // Update every 5 seconds
-        distanceInterval: 10, // Update every 10 meters
-      },
-      (location) => {
-        callback({
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
-          timestamp: location.timestamp,
-        });
-      }
-    );
+import * as TaskManager from 'expo-task-manager';
+import { DeviceEventEmitter } from 'react-native';
 
-    return subscription;
+const LOCATION_TASK_NAME = 'background-location-task';
+
+// Define the background task
+TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: { data: any; error: any }) => {
+  if (error) {
+    console.error('Background location task error:', error);
+    return;
+  }
+  if (data) {
+    const { locations } = data as { locations: Location.LocationObject[] };
+    // Emit the latest location to the UI
+    if (locations && locations.length > 0) {
+      const location = locations[locations.length - 1]; // Get the latest
+      
+      console.log(`[BackgroundLocation] New update: ${location.timestamp} | Lat: ${location.coords.latitude}, Lng: ${location.coords.longitude} | Acc: ${location.coords.accuracy}`);
+
+      DeviceEventEmitter.emit('onLocationUpdate', {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+        timestamp: location.timestamp,
+        accuracy: location.coords.accuracy, // Pass accuracy for filtering
+      });
+    }
+  }
+});
+
+export const startLocationTracking = async (): Promise<boolean> => {
+  try {
+    const { status } = await Location.getBackgroundPermissionsAsync();
+    if (status !== 'granted') {
+      console.log('Background permission not granted');
+      // Fallback to foreground permission check or return false
+      // Assuming requestLocationPermissions was called before this
+    }
+
+    await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
+      accuracy: Location.Accuracy.High,
+      timeInterval: 5000,
+      distanceInterval: 2,
+      showsBackgroundLocationIndicator: true, // Show blue bar on iOS
+      foregroundService: {
+        notificationTitle: "Run Active",
+        notificationBody: "Tracking your run location...",
+      },
+    });
+    return true;
   } catch (error) {
-    console.error('Error starting location tracking:', error);
-    return null;
+    console.error('Error starting background location tracking:', error);
+    return false;
+  }
+};
+
+export const stopLocationTracking = async () => {
+  try {
+    const hasStarted = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
+    if (hasStarted) {
+      await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
+    }
+  } catch (error) {
+    console.error('Error stopping location tracking:', error);
   }
 };
 

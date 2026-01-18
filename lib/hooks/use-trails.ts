@@ -13,7 +13,7 @@ const generateId = (): string => {
 };
 
 interface UseTrailsOptions {
-  userId: string | null;
+  userId: string;
 }
 
 interface UseTrailsReturn {
@@ -31,12 +31,6 @@ export function useTrails({ userId }: UseTrailsOptions): UseTrailsReturn {
   const [error, setError] = useState<Error | null>(null);
 
   const fetchTrails = useCallback(async () => {
-    if (!userId) {
-      setTrailsList([]);
-      setLoading(false);
-      return;
-    }
-
     try {
       setLoading(true);
       const result = await db
@@ -60,10 +54,6 @@ export function useTrails({ userId }: UseTrailsOptions): UseTrailsReturn {
   }, [fetchTrails]);
 
   const createTrail = useCallback(async (name: string): Promise<string> => {
-    if (!userId) {
-      throw new Error('User not authenticated');
-    }
-
     const id = generateId();
     const now = new Date();
 

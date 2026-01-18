@@ -1,5 +1,5 @@
-import { db } from './client';
 import { sql } from 'drizzle-orm';
+import { db } from './client';
 
 /**
  * Run database migrations
@@ -15,6 +15,7 @@ export async function runMigrations(): Promise<void> {
       apple_user_id TEXT NOT NULL UNIQUE,
       email TEXT,
       display_name TEXT,
+      coach_mode TEXT CHECK(coach_mode IN ('mindful', 'performance')),
       created_at INTEGER NOT NULL
     )
   `);
@@ -42,6 +43,11 @@ export async function runMigrations(): Promise<void> {
       distance REAL NOT NULL DEFAULT 0,
       avg_pace REAL NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'paused', 'completed')),
+      coach_note TEXT,
+      pre_run_suggestion TEXT,
+      sentiment_score REAL,
+      run_vibe TEXT,
+      weather_condition TEXT,
       created_at INTEGER NOT NULL
     )
   `);
@@ -88,6 +94,27 @@ export async function runMigrations(): Promise<void> {
   await db.run(sql`CREATE INDEX IF NOT EXISTS idx_pace_points_run_moment_id ON pace_points(run_moment_id)`);
   await db.run(sql`CREATE INDEX IF NOT EXISTS idx_journals_run_moment_id ON journals(run_moment_id)`);
   await db.run(sql`CREATE INDEX IF NOT EXISTS idx_run_snaps_run_moment_id ON run_snaps(run_moment_id)`);
+
+  // Migration: Add coach_mode to users if it doesn't exist
+  try {
+    await db.run(sql`ALTER TABLE users ADD COLUMN coach_mode TEXT CHECK(coach_mode IN ('mindful', 'performance'))`);
+    console.log('Added coach_mode column to users table');
+  } catch (e) {
+    // Column likely already exists
+    // console.log('coach_mode column already exists or could not be added');
+  }
+
+  // Migration: Add new analysis columns to run_moments
+  try {
+    await db.run(sql`ALTER TABLE run_moments ADD COLUMN coach_note TEXT`);
+    await db.run(sql`ALTER TABLE run_moments ADD COLUMN pre_run_suggestion TEXT`);
+    await db.run(sql`ALTER TABLE run_moments ADD COLUMN sentiment_score REAL`);
+    await db.run(sql`ALTER TABLE run_moments ADD COLUMN run_vibe TEXT`);
+    await db.run(sql`ALTER TABLE run_moments ADD COLUMN weather_condition TEXT`);
+    console.log('Added analysis columns (including coach_note) to run_moments table');
+  } catch (e) {
+    // Columns likely already exist
+  }
 
   console.log('Database migrations completed successfully');
 }

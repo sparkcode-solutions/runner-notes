@@ -16,11 +16,14 @@
         "NSLocationAlwaysAndWhenInUseUsageDescription": "We need your location to track your runs in the background and calculate pace accurately.",
         "NSCameraUsageDescription": "We need camera access to capture Run Snaps during your runs.",
         "NSPhotoLibraryUsageDescription": "We need photo library access to save and select Run Snaps.",
+        "NSMicrophoneUsageDescription": "We need microphone access for video snaps.",
         "UIBackgroundModes": [
-          "location",
           "location"
         ],
         "ITSAppUsesNonExemptEncryption": false
+      },
+      "runtimeVersion": {
+        "policy": "appVersion"
       }
     },
     "android": {
@@ -33,6 +36,12 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.RECORD_AUDIO",
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.CAMERA",
@@ -80,7 +89,8 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow Runner Notes to capture Run Snaps during your runs."
+          "cameraPermission": "Allow Runner Notes to capture Run Snaps during your runs.",
+          "microphonePermission": "Allow Runner Notes to capture audio for Run Snaps."
         }
       ],
       [
@@ -99,6 +109,9 @@
       "eas": {
         "projectId": "01f17c60-29ef-465c-bf99-1a6b214bb9ba"
       }
+    },
+    "updates": {
+      "url": "https://u.expo.dev/01f17c60-29ef-465c-bf99-1a6b214bb9ba"
     }
   }
 }

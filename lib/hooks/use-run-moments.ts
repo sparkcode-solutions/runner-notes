@@ -33,7 +33,7 @@ export interface RunMomentWithPreview extends RunMoment {
 }
 
 interface UseRunMomentsOptions {
-  userId: string | null;
+  userId: string;
 }
 
 interface UseRunMomentsReturn {
@@ -65,12 +65,6 @@ export function useRunMoments({ userId }: UseRunMomentsOptions): UseRunMomentsRe
   const [error, setError] = useState<Error | null>(null);
 
   const fetchRunMoments = useCallback(async () => {
-    if (!userId) {
-      setMomentsList([]);
-      setLoading(false);
-      return;
-    }
-
     try {
       setLoading(true);
       
@@ -133,10 +127,6 @@ export function useRunMoments({ userId }: UseRunMomentsOptions): UseRunMomentsRe
   }, [fetchRunMoments]);
 
   const createRunMoment = useCallback(async (trailId: string, trailName: string): Promise<string> => {
-    if (!userId) {
-      throw new Error('User not authenticated');
-    }
-
     const id = generateId();
     const now = new Date();
 
@@ -220,7 +210,7 @@ export function useRunMoments({ userId }: UseRunMomentsOptions): UseRunMomentsRe
 
 // Hook to get a single run moment with pace history
 interface UseRunMomentOptions {
-  userId: string | null;
+  userId: string;
   runMomentId: string | null;
 }
 
@@ -237,7 +227,7 @@ export function useRunMoment({ userId, runMomentId }: UseRunMomentOptions): UseR
   const [error, setError] = useState<Error | null>(null);
 
   const fetchRunMoment = useCallback(async () => {
-    if (!userId || !runMomentId) {
+    if (!runMomentId) {
       setRunMoment(null);
       setLoading(false);
       return;

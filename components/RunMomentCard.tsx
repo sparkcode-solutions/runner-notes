@@ -1,10 +1,13 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, ImageBackground } from 'react-native';
-import { router } from 'expo-router';
-import { FlipCard } from './FlipCard';
-import { formatDistance, formatPace } from '../lib/location';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import { ImageBackground, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { RunMoment } from '../lib/db/schema';
+import { formatDistance, formatPace } from '../lib/location';
+import { ReflectionEngine } from '../lib/reflection';
+import { useTheme } from '../lib/theme';
+import { FlipCard } from './FlipCard';
+import { InsightBlock } from './InsightBlock';
 
 interface RunMomentCardProps {
   runMoment: RunMoment;
@@ -12,45 +15,61 @@ interface RunMomentCardProps {
   featuredSnapUri?: string | null;
 }
 
-// Placeholder gradients for when there's no photo
-const PLACEHOLDER_COLORS = [
-  ['#1a3a2f', '#0d1f19'], // Forest green
-  ['#2d3748', '#1a202c'], // Slate
-  ['#44337a', '#2d2540'], // Purple dusk
-  ['#1e3a5f', '#0f1f33'], // Ocean blue
-  ['#5c4033', '#2d1f18'], // Earth brown
-];
-
-export const RunMomentCard: React.FC<RunMomentCardProps> = ({ 
+export const RunMomentCard: React.FC<RunMomentCardProps> = ({
   runMoment,
   journalPreview,
   featuredSnapUri,
 }) => {
+  const theme = useTheme();
+
   const handleLongPress = () => {
     router.push(`/run/${runMoment.id}`);
   };
 
   // Get a consistent color based on trail name
-  const colorIndex = runMoment.trailName.length % PLACEHOLDER_COLORS.length;
-  const [bgColor] = PLACEHOLDER_COLORS[colorIndex];
+  const colorIndex = runMoment.trailName.length % theme.cardStyle.placeholderColors.length;
+  const [bgColor] = theme.cardStyle.placeholderColors[colorIndex];
 
   const hasJournal = journalPreview && journalPreview.trim().length > 0;
   const hasSnap = featuredSnapUri && featuredSnapUri.length > 0;
+
+  // Build context for AI
+  const context = ReflectionEngine.buildContext(runMoment, journalPreview);
+
+  // Use local state for Vibe Prompt (async from AI)
+  // Initialize with sync fallback to prevent flicker
+  const [vibePrompt, setVibePrompt] = useState(ReflectionEngine.generateVibePromptSync(context));
+
+  useEffect(() => {
+    let mounted = true;
+    const loadPrompt = async () => {
+      const prompt = await ReflectionEngine.generateVibePrompt(context);
+      if (mounted && prompt) setVibePrompt(prompt);
+    };
+    loadPrompt();
+    return () => { mounted = false; };
+  }, [runMoment.id]);
+
+  const aiReflection = runMoment.coachNote || ReflectionEngine.generateReflection(context);
+
+  // Determine InsightBlock mode and content
+  const insightMode = aiReflection ? 'insight' : 'prompt';
+  const insightText = aiReflection || vibePrompt;
 
   // Content for the front face
   const FrontContent = (
     <>
       {/* Gradient overlay for text readability */}
-      <View style={styles.gradientOverlay} />
-      
+      <View style={[styles.gradientOverlay, { backgroundColor: theme.colors.cardOverlay }]} />
+
       {/* Content */}
       <View style={styles.frontContent}>
         {/* Top label */}
         <Text style={styles.runSnapLabel}>{hasSnap ? 'Run Snap' : 'Run Moment'}</Text>
-        
+
         {/* Trail name - large */}
         <Text style={styles.trailTitle}>{runMoment.trailName}</Text>
-        
+
         {/* Bottom row - stats and arrow */}
         <View style={styles.frontBottom}>
           <View style={styles.statsRow}>
@@ -60,7 +79,7 @@ export const RunMomentCard: React.FC<RunMomentCardProps> = ({
             <Text style={styles.statValueFront}>{formatPace(runMoment.avgPace)}</Text>
             <Text style={styles.statUnitFront}>/km</Text>
           </View>
-          
+
           <View style={styles.arrowCircle}>
             <Ionicons name="arrow-forward" size={16} color="#fff" />
           </View>
@@ -70,7 +89,7 @@ export const RunMomentCard: React.FC<RunMomentCardProps> = ({
       {/* Status badge for active runs */}
       {runMoment.status !== 'completed' && (
         <View style={styles.statusBadge}>
-          <View style={styles.statusDot} />
+          <View style={[styles.statusDot, { backgroundColor: theme.colors.success }]} />
           <Text style={styles.statusText}>
             {runMoment.status === 'active' ? 'Live' : 'Paused'}
           </Text>
@@ -81,41 +100,49 @@ export const RunMomentCard: React.FC<RunMomentCardProps> = ({
 
   // Front Face - Photo/Gradient with overlay
   const FrontFace = hasSnap ? (
-    <ImageBackground 
-      source={{ uri: featuredSnapUri }} 
-      style={[styles.cardFace, styles.frontFace]}
-      imageStyle={styles.snapImage}
+    <ImageBackground
+      source={{ uri: featuredSnapUri }}
+      style={[styles.cardFace, styles.frontFace, { borderRadius: theme.cardStyle.borderRadius }]}
+      imageStyle={{ borderRadius: theme.cardStyle.borderRadius }}
     >
       {FrontContent}
     </ImageBackground>
   ) : (
-    <View style={[styles.cardFace, styles.frontFace, { backgroundColor: bgColor }]}>
+    <View style={[styles.cardFace, styles.frontFace, { backgroundColor: bgColor, borderRadius: theme.cardStyle.borderRadius }]}>
       {FrontContent}
     </View>
   );
 
-  // Back Face - Journal page aesthetic
+  // Back Face - Journal page aesthetic with AI Insight Block
   const BackFace = (
-    <View style={[styles.cardFace, styles.backFace]}>
-      {/* AI Prompt */}
-      <View style={styles.promptRow}>
-        <Ionicons name="sparkles" size={14} color="#8B7355" />
-        <Text style={styles.promptText}>The air on the trail today felt...</Text>
-      </View>
+    <View style={[
+      styles.cardFace,
+      styles.backFace,
+      {
+        backgroundColor: theme.colors.journalBackground,
+        borderRadius: theme.cardStyle.borderRadius,
+      }
+    ]}>
+      {/* AI Insight Block - Top 30% */}
+      <InsightBlock
+        mode={insightMode}
+        text={insightText}
+        hasNewContent={!!aiReflection}
+      />
 
-      {/* Journal Content */}
+      {/* Journal Content - Bottom 70% */}
       <View style={styles.journalArea}>
         {hasJournal ? (
-          <ScrollView 
+          <ScrollView
             showsVerticalScrollIndicator={false}
             nestedScrollEnabled
             style={styles.journalScroll}
           >
-            <Text style={styles.journalText}>{journalPreview}</Text>
+            <Text style={[styles.journalText, { fontFamily: theme.fonts.journal }]}>{journalPreview}</Text>
           </ScrollView>
         ) : (
           <View style={styles.emptyJournal}>
-            <Text style={styles.emptyJournalText}>
+            <Text style={[styles.emptyJournalText, { color: theme.colors.textMuted }]}>
               Tap to capture your thoughts...
             </Text>
           </View>
@@ -123,9 +150,9 @@ export const RunMomentCard: React.FC<RunMomentCardProps> = ({
       </View>
 
       {/* Bottom action */}
-      <View style={styles.backBottom}>
-        <Text style={styles.trailNameBack}>{runMoment.trailName}</Text>
-        <Ionicons name="bookmark-outline" size={20} color="#8B7355" />
+      <View style={[styles.backBottom, { borderTopColor: theme.colors.journalBorder }]}>
+        <Text style={[styles.trailNameBack, { color: theme.colors.textMuted }]}>{runMoment.trailName}</Text>
+        <Ionicons name="bookmark-outline" size={20} color={theme.colors.textMuted} />
       </View>
     </View>
   );
@@ -141,7 +168,6 @@ export const RunMomentCard: React.FC<RunMomentCardProps> = ({
 
 const styles = StyleSheet.create({
   cardFace: {
-    borderRadius: 20,
     minHeight: 220,
     overflow: 'hidden',
   },
@@ -153,14 +179,8 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
 
-  snapImage: {
-    borderRadius: 20,
-  },
-
   gradientOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    // Simulate gradient with multiple layers
   },
 
   frontContent: {
@@ -237,7 +257,6 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#4ADE80',
     marginRight: 6,
   },
 
@@ -251,24 +270,7 @@ const styles = StyleSheet.create({
   // BACK FACE STYLES
   // ==================
   backFace: {
-    backgroundColor: '#FAF6F1', // Warm cream/paper color
     padding: 20,
-  },
-
-  promptRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(139, 115, 85, 0.15)',
-  },
-
-  promptText: {
-    fontSize: 13,
-    color: '#8B7355',
-    marginLeft: 8,
-    fontStyle: 'italic',
   },
 
   journalArea: {
@@ -286,7 +288,6 @@ const styles = StyleSheet.create({
     color: '#3D3229',
     lineHeight: 26,
     fontStyle: 'italic',
-    fontFamily: 'Georgia',
   },
 
   emptyJournal: {
@@ -297,7 +298,6 @@ const styles = StyleSheet.create({
 
   emptyJournalText: {
     fontSize: 15,
-    color: '#A89F91',
     fontStyle: 'italic',
   },
 
@@ -308,12 +308,10 @@ const styles = StyleSheet.create({
     marginTop: 16,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(139, 115, 85, 0.15)',
   },
 
   trailNameBack: {
     fontSize: 12,
-    color: '#8B7355',
     fontWeight: '500',
   },
 });
