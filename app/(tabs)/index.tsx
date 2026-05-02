@@ -1,10 +1,13 @@
-import { CoachOrb } from '@/components/CoachOrb';
+// import { CoachOrb } from '@/components/CoachOrb';
+import { HomeSwipeControl } from '@/components/HomeSwipeControl';
 import { RunMomentCard } from '@/components/RunMomentCard';
 import { StarryNight } from '@/components/StarryNight';
 import { ThemeSwitcher } from '@/components/ThemeSwitcher';
+import { runnerTheme } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
 import { useCoach } from '@/lib/coach-context';
 import { useRunMoments } from '@/lib/hooks';
+import { useRun } from '@/lib/run-context';
 import { useTheme } from '@/lib/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -20,13 +23,14 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
 
 export default function HomeScreen() {
   const { user } = useAuth();
   const theme = useTheme();
   const { isNight } = useCoach();
+  const { status } = useRun();
   const { runMoments, loading, refetch } = useRunMoments({ userId: user.id });
   const [refreshing, setRefreshing] = useState(false);
   const [showThemeSwitcher, setShowThemeSwitcher] = useState(false);
@@ -47,8 +51,13 @@ export default function HomeScreen() {
     }
   };
 
-  const handleStartRun = () => {
-    router.push('/run/create');
+  const onSwipeRight = () => {
+    // Start run immediately with auto-start
+    router.push({ pathname: '/run/create', params: { autoStart: 'true' } });
+  };
+
+  const onSwipeLeft = () => {
+    router.push('/coach');
   };
 
   const handleLongPress = () => {
@@ -126,13 +135,31 @@ export default function HomeScreen() {
           />
         )}
 
-        <TouchableOpacity
-          style={[styles.fab, { backgroundColor: theme.colors.accent }]}
-          onPress={handleStartRun}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="add" size={32} color={theme.isDark ? '#000' : '#fff'} />
-        </TouchableOpacity>
+        <View style={{ position: 'absolute', bottom: 0, width: '100%' }}>
+          {status === 'active' || status === 'paused' ? (
+            <TouchableOpacity
+              style={styles.resumeContainer}
+              onPress={() => router.push('/run/create')}
+              activeOpacity={0.9}
+            >
+              <View style={styles.resumeContent}>
+                <View>
+                  <Text style={styles.resumeLabel}>Run in Progress</Text>
+                  <Text style={styles.resumeSubLabel}>{status === 'paused' ? 'Paused' : 'Tracking location...'}</Text>
+                </View>
+                <View style={styles.resumeButton}>
+                  <Text style={styles.resumeButtonText}>Resume</Text>
+                  <Ionicons name="arrow-forward" size={20} color="#fff" />
+                </View>
+              </View>
+            </TouchableOpacity>
+          ) : (
+            <HomeSwipeControl
+              onSwipeRight={onSwipeRight}
+              onSwipeLeft={onSwipeLeft}
+            />
+          )}
+        </View>
       </SafeAreaView>
 
       {/* Theme Switcher Modal */}
@@ -141,8 +168,8 @@ export default function HomeScreen() {
         onClose={handleCloseSwitcher}
       />
 
-      {/* Mindful Coach Standby Orb */}
-      <CoachOrb />
+      {/* Mindful Coach Standby Orb - commented out while redesigning AI interaction */}
+      {/* <CoachOrb /> */}
     </Pressable>
   );
 }
@@ -198,19 +225,45 @@ const styles = StyleSheet.create({
     marginTop: 24,
     fontStyle: 'italic',
   },
-  fab: {
-    position: 'absolute',
-    bottom: 32,
-    right: 24,
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    justifyContent: 'center',
-    alignItems: 'center',
+  resumeContainer: {
+    margin: 24,
+    backgroundColor: runnerTheme.colors.surface,
+    borderRadius: 24,
+    padding: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  resumeContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  resumeLabel: {
+    color: runnerTheme.colors.textPrimary,
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  resumeSubLabel: {
+    color: runnerTheme.colors.accent,
+    fontSize: 14,
+    marginTop: 4,
+  },
+  resumeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: runnerTheme.colors.accent,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+  },
+  resumeButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    marginRight: 4,
   },
 });

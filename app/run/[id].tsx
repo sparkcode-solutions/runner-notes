@@ -41,12 +41,8 @@ export default function RunMomentDetailScreen() {
   const [showCamera, setShowCamera] = useState(false);
 
   const handleCaptureSnap = async (uri: string, caption?: string, fromGallery?: boolean) => {
-    try {
-      await addSnap(uri, caption, fromGallery);
-    } catch (error) {
-      console.error('Error saving snap:', error);
-      Alert.alert('Error', 'Failed to save snap');
-    }
+    // Let the CameraCapture component handle errors so the modal doesn't close on failure
+    await addSnap(uri, caption, fromGallery);
   };
 
   const handleSnapPress = (snapId: string, isFeatured: boolean) => {
@@ -129,7 +125,7 @@ export default function RunMomentDetailScreen() {
         </View>
 
         {/* AI Insight Block */}
-        <Card style={[styles.insightCard, { backgroundColor: theme.colors.journalBackground }]}>
+        <Card style={[styles.insightCard, { backgroundColor: theme.colors.surfaceElevated, borderWidth: 1, borderColor: theme.colors.border }]}>
           <InsightBlock
             mode={insightMode}
             text={insightText}

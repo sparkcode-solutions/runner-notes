@@ -41,7 +41,7 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
       const photo = await cameraRef.current.takePictureAsync({
         quality: 0.8,
       });
-      
+
       if (photo) {
         setCapturedImage(photo.uri);
       }
@@ -82,14 +82,15 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
       // Check if image is from gallery (starts with file:// but not from camera cache)
       const isFromGallery = !capturedImage.includes('Camera');
       await onCapture(capturedImage, caption || undefined, isFromGallery);
-      
+
       // Reset state
       setCapturedImage(null);
       setCaption('');
       onClose();
     } catch (error) {
       console.error('Error saving snap:', error);
-      Alert.alert('Error', 'Failed to save snap');
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      Alert.alert('Error', `Failed to save snap: ${errorMessage}`);
     } finally {
       setSaving(false);
     }
@@ -136,9 +137,9 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
         {!capturedImage ? (
           // Camera View
           <>
-            <CameraView 
+            <CameraView
               ref={cameraRef}
-              style={styles.camera} 
+              style={styles.camera}
               facing={facing}
             >
               {/* Top controls */}
@@ -156,11 +157,11 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
                 <TouchableOpacity onPress={handlePickFromGallery} style={styles.galleryButton}>
                   <Ionicons name="images-outline" size={24} color="#fff" />
                 </TouchableOpacity>
-                
+
                 <TouchableOpacity onPress={handleCapture} style={styles.captureButton}>
                   <View style={styles.captureButtonInner} />
                 </TouchableOpacity>
-                
+
                 <View style={styles.placeholderButton} />
               </View>
             </CameraView>
@@ -169,7 +170,7 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
           // Preview View
           <SafeAreaView style={styles.previewContainer}>
             <Image source={{ uri: capturedImage }} style={styles.previewImage} />
-            
+
             {/* Overlay controls */}
             <View style={styles.previewOverlay}>
               {/* Caption input */}
@@ -191,9 +192,9 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
                   <Ionicons name="refresh" size={24} color="#fff" />
                   <Text style={styles.actionButtonText}>Retake</Text>
                 </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  onPress={handleSave} 
+
+                <TouchableOpacity
+                  onPress={handleSave}
                   style={styles.saveButton}
                   disabled={saving}
                 >

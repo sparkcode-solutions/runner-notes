@@ -36,6 +36,33 @@ export const getCurrentLocation = async (): Promise<LocationCoords | null> => {
   }
 };
 
+export const reverseGeocode = async (latitude: number, longitude: number): Promise<string | null> => {
+  try {
+    const [address] = await Location.reverseGeocodeAsync({
+      latitude,
+      longitude,
+    });
+
+    if (address) {
+      // Construct a friendly name, e.g., "Run in San Francisco", "Morning Run", etc.
+      // For now, let's return the city or name.
+      // We can enhance this logic to be time-aware later if needed, 
+      // but the caller can also append "Morning/Evening" based on time.
+      const name = address.name || address.street;
+      const city = address.city || address.subregion || address.region;
+      
+      if (city) {
+        return `${city}`;
+      }
+      return name || null;
+    }
+    return null;
+  } catch (error) {
+    console.error('Error reverse geocoding:', error);
+    return null;
+  }
+};
+
 import * as TaskManager from 'expo-task-manager';
 import { DeviceEventEmitter } from 'react-native';
 

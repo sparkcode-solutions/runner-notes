@@ -8,21 +8,19 @@ import { useAuth } from '@/lib/auth-context';
 import { useCoach } from '@/lib/coach-context';
 import { completeRunMomentRecord, createRunMomentRecord, useRunMoments, useRunSnaps } from '@/lib/hooks';
 import {
-  calculateDistance,
-  calculatePace,
   getCurrentLocation,
   requestLocationPermissions,
+  reverseGeocode,
   startLocationTracking,
-  stopLocationTracking,
-  type LocationCoords,
+  stopLocationTracking
 } from '@/lib/location';
 import { ReflectionEngine } from '@/lib/reflection';
+import { useRun } from '@/lib/run-context';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert,
-  DeviceEventEmitter,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -30,46 +28,42 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-
-type RunStatus = 'idle' | 'active' | 'paused';
-
-interface PacePoint {
-  timestamp: number;
-  pace: number;
-  lat: number;
-  lng: number;
-}
+import MapView, { Polyline, PROVIDER_DEFAULT } from 'react-native-maps';
 
 export default function CreateRunScreen() {
+  const params = useLocalSearchParams();
+  const autoStart = params.autoStart === 'true';
   const { user } = useAuth();
   const { greeting } = useCoach();
-  const [status, setStatus] = useState<RunStatus>('idle');
-  const statusRef = useRef<RunStatus>('idle');
 
-  // Sync ref with state effectively
-  const updateStatus = (newStatus: RunStatus) => {
-    setStatus(newStatus);
-    statusRef.current = newStatus;
-  };
+  // Use Global Run Context
+  const {
+    status,
+    distance,
+    duration,
+    pace,
+    paceHistory,
+    runMomentId,
+    trailName: contextTrailName,
+    trailId: contextTrailId,
+    startRun,
+    stopRun,
+    pauseRun,
+    resumeRun,
+    isRestored
+  } = useRun();
 
-  const [selectedTrailId, setSelectedTrailId] = useState<string | null>(null);
-  const [selectedTrailName, setSelectedTrailName] = useState<string | null>(null);
+  const [selectedTrailId, setSelectedTrailId] = useState<string | null>(contextTrailId);
+  const [selectedTrailName, setSelectedTrailName] = useState<string | null>(contextTrailName);
 
-  const [distance, setDistance] = useState(0); // meters
-  const [duration, setDuration] = useState(0); // seconds
-  const [pace, setPace] = useState(0); // min/km
-
-  const [runMomentId, setRunMomentId] = useState<string | null>(null);
-  const [paceHistory, setPaceHistory] = useState<PacePoint[]>([]);
+  // Keep local state for trail selection only if idle
+  useEffect(() => {
+    if (contextTrailId) setSelectedTrailId(contextTrailId);
+    if (contextTrailName) setSelectedTrailName(contextTrailName);
+  }, [contextTrailId, contextTrailName]);
 
   const [showCamera, setShowCamera] = useState(false);
-  const eventSubscriptionRef = useRef<any>(null); // Replaces locationSubscriptionRef
-  const lastLocationRef = useRef<LocationCoords | null>(null);
-  const timerIntervalRef = useRef<any>(null);
-  const startTimeRef = useRef<number | null>(null);
-  const pausedDurationRef = useRef<number>(0);
-  const totalDistanceRef = useRef<number>(0); // Track cumulative distance in ref
-  const currentDurationRef = useRef<number>(0); // Track current duration in ref
+  const slowPaceCountRef = useRef<number>(0);
 
   // Fetch recent history for AI recommendation
   const { runMoments: history } = useRunMoments({ userId: user.id });
@@ -92,242 +86,136 @@ export default function CreateRunScreen() {
   // Run snaps hook
   const { addSnap, snaps } = useRunSnaps({ runMomentId });
 
+  // Handle Location Updates for UI interactions (Auto-Walk detection)
+  // Distance tracking is now in Context, but we might want to listen for specific events here if needed.
+  // For now, let's just rely on Context for data.
+  // BUT: Auto-Walk detection logic was in create.tsx. We should keep it or move it.
+  // Moving it to create.tsx: triggering Alert needs UI.
+  // We can monitor `pace` from context.
   useEffect(() => {
-    return () => {
-      // Cleanup on unmount
-      if (eventSubscriptionRef.current) {
-        eventSubscriptionRef.current.remove();
-      }
-      stopLocationTracking(); // Ensure background task stops if component unmounts (optional, but good for testing)
-      if (timerIntervalRef.current) {
-        clearInterval(timerIntervalRef.current);
-      }
-    };
-  }, []);
-
-  const handleLocationUpdate = (location: LocationCoords) => {
-    // Check ref instead of state to avoid stale closure
-    if (statusRef.current !== 'active') {
-      // console.log('[Run] Ignored update (not active)');
-      return;
-    }
-
-    // If this is the first location, just store it and return
-    if (!lastLocationRef.current) {
-      console.log('[Run] First location fix set:', location);
-      lastLocationRef.current = location;
-      return;
-    }
-
-    // Calculate distance delta from last location
-    const distanceDelta = calculateDistance(
-      lastLocationRef.current.latitude,
-      lastLocationRef.current.longitude,
-      location.latitude,
-      location.longitude
-    );
-
-    console.log(`[Run] Delta: ${distanceDelta.toFixed(2)}m | Pace: ${pace.toFixed(2)} | Total: ${totalDistanceRef.current.toFixed(2)}m`);
-
-    // Only add distance if it's significant (filter out GPS noise)
-    // GPS can have small errors, so ignore very small movements
-    if (distanceDelta > 1) { // Only count movements > 1 meter
-      // Update cumulative distance using ref to avoid stale closure
-      totalDistanceRef.current += distanceDelta;
-      const newDistance = totalDistanceRef.current;
-      setDistance(newDistance);
-
-      // Calculate pace using duration from ref (always current)
-      const currentDuration = currentDurationRef.current;
-      if (newDistance > 0 && currentDuration > 0) {
-        const currentPace = calculatePace(newDistance, currentDuration);
-        console.log(`[Run] New Pace: ${currentPace.toFixed(2)} min/km`);
-        setPace(currentPace);
-
-        const pacePoint: PacePoint = {
-          timestamp: location.timestamp,
-          pace: currentPace,
-          lat: location.latitude,
-          lng: location.longitude,
-        };
-        setPaceHistory((prev) => [...prev, pacePoint]);
+    if (status === 'active' && pace > 10) {
+      slowPaceCountRef.current += 1;
+      if (slowPaceCountRef.current >= 5) {
+        slowPaceCountRef.current = 0;
+        Alert.alert(
+          'Pace Detected',
+          'You seem to be moving at a walking pace. Would you like to switch mode?',
+          [
+            { text: 'Keep Running', style: 'cancel' },
+            {
+              text: 'Switch to Walk', onPress: () => {
+                // Update context trail name?
+                // We need a way to update context trail name.
+                // For now, ignore or implement `updateRunDetails`.
+              }
+            }
+          ]
+        );
       }
     } else {
-      // console.log('[Run] Micro-movement ignored (<1m)');
+      slowPaceCountRef.current = 0;
     }
-
-    // Update last location
-    lastLocationRef.current = location;
-  };
+  }, [status, pace]);
 
   const handleStart = async () => {
-    if (!selectedTrailId || !selectedTrailName) {
-      Alert.alert('Select Trail', 'Please select a trail before starting');
+    // 1. Permissions
+    const hasPermissions = await requestLocationPermissions();
+    if (!hasPermissions) {
+      Alert.alert('Permission Required', 'Location is required to track run.');
       return;
     }
 
-    // Request location permissions
-    const hasPermissions = await requestLocationPermissions();
-    if (!hasPermissions) {
-      Alert.alert(
-        'Location Permission',
-        'Location permissions are required to track your run'
-      );
-      return;
+    let tName = selectedTrailName;
+    let tId = selectedTrailId;
+
+    if (!tName) {
+      const loc = await getCurrentLocation();
+      if (loc) {
+        const name = await reverseGeocode(loc.latitude, loc.longitude);
+        tName = name ? `Run in ${name}` : `Run - ${new Date().toLocaleDateString()}`;
+        tId = 'auto-location';
+      } else {
+        tName = `Run - ${new Date().toLocaleDateString()}`;
+        tId = 'auto-unknown';
+      }
+      setSelectedTrailName(tName);
+      setSelectedTrailId(tId);
     }
 
     try {
-      // Reset distance tracking
-      totalDistanceRef.current = 0;
-      currentDurationRef.current = 0;
-      setDistance(0);
-      setDuration(0);
-      setPace(0);
-      setPaceHistory([]);
-      lastLocationRef.current = null;
-      pausedDurationRef.current = 0;
+      // Create DB record
+      const momentId = await createRunMomentRecord(user.id, tId!, tName!);
 
-      // Create run moment in local database
-      const momentId = await createRunMomentRecord(user.id, selectedTrailId, selectedTrailName);
-      setRunMomentId(momentId);
+      // Start Location Service
+      await startLocationTracking();
 
-      // Get initial location first
-      const initialLocation = await getCurrentLocation();
-      if (initialLocation) {
-        lastLocationRef.current = initialLocation;
-      }
+      // Start Global Run
+      startRun(tId!, tName!, momentId);
 
-      // Start location tracking
-      const success = await startLocationTracking();
-      if (success) {
-        eventSubscriptionRef.current = DeviceEventEmitter.addListener('onLocationUpdate', handleLocationUpdate);
-      } else {
-        throw new Error('Failed to start tracking');
-      }
-
-      // Start timer
-      startTimeRef.current = Date.now();
-      timerIntervalRef.current = setInterval(() => {
-        if (startTimeRef.current) {
-          const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000) - pausedDurationRef.current;
-          currentDurationRef.current = elapsed; // Update ref
-          setDuration(elapsed);
-
-          // Recalculate pace with updated duration
-          if (totalDistanceRef.current > 0) {
-            const currentPace = calculatePace(totalDistanceRef.current, elapsed);
-            setPace(currentPace);
-          }
-        }
-      }, 1000);
-
-      updateStatus('active');
-    } catch (error) {
-      Alert.alert('Error', 'Failed to start run tracking');
-      console.error('Error starting run:', error);
+    } catch (e) {
+      console.error('Error starting run', e);
+      Alert.alert('Error', 'Failed to start run');
     }
   };
 
-  const handlePause = () => {
-    if (timerIntervalRef.current) {
-      clearInterval(timerIntervalRef.current);
+  // Auto-start
+  useEffect(() => {
+    if (autoStart && status === 'idle' && isRestored) {
+      handleStart();
     }
-    updateStatus('paused');
-  };
-
-  const handleResume = () => {
-    // Calculate paused duration
-    if (startTimeRef.current) {
-      const pausedTime = Math.floor((Date.now() - startTimeRef.current) / 1000) - currentDurationRef.current;
-      pausedDurationRef.current += pausedTime;
-    }
-
-    // Restart timer
-    timerIntervalRef.current = setInterval(() => {
-      if (startTimeRef.current) {
-        const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000) - pausedDurationRef.current;
-        currentDurationRef.current = elapsed; // Update ref
-        setDuration(elapsed);
-
-        // Recalculate pace with updated duration
-        if (totalDistanceRef.current > 0) {
-          const currentPace = calculatePace(totalDistanceRef.current, elapsed);
-          setPace(currentPace);
-        }
-      }
-    }, 1000);
-
-    updateStatus('active');
-  };
+  }, [autoStart, status, isRestored]);
 
   const handleStop = () => {
     Alert.alert(
       'Complete Run',
-      'Are you sure you want to complete this run?',
+      'Finish this run?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Complete',
           onPress: async () => {
             if (!runMomentId) return;
-
-            // Stop tracking
-            if (eventSubscriptionRef.current) {
-              eventSubscriptionRef.current.remove();
-            }
+            // Stop location
             await stopLocationTracking();
-            if (timerIntervalRef.current) {
-              clearInterval(timerIntervalRef.current);
-            }
 
-            // Use ref value for final distance to ensure accuracy
-            const finalDistance = totalDistanceRef.current;
-            const avgPace = calculatePace(finalDistance, duration);
-
+            // Save to DB
+            // We use global stats
             try {
               await completeRunMomentRecord(runMomentId, {
                 duration,
-                distance: finalDistance,
-                avgPace,
-                paceHistory,
+                distance,
+                avgPace: pace, // or calculate avg from duration/distance
+                paceHistory
               });
-
+              stopRun(); // Reset global state
               router.replace(`/run/${runMomentId}`);
-            } catch (error) {
-              Alert.alert('Error', 'Failed to save run');
-              console.error('Error completing run:', error);
+            } catch (e) {
+              console.error('Error saving', e);
             }
-          },
-        },
+          }
+        }
       ]
     );
   };
 
   const handleBack = () => {
     if (status !== 'idle') {
-      Alert.alert(
-        'Exit',
-        'Are you sure you want to exit? Your run will not be saved.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Exit', style: 'destructive', onPress: () => router.back() },
-        ]
-      );
+      // Keep run running in background! 
+      // Just navigate back. User can return later.
+      router.back();
     } else {
       router.back();
     }
   };
 
   const handleCaptureSnap = async (uri: string, caption?: string, fromGallery?: boolean) => {
-    try {
-      await addSnap(uri, caption, fromGallery);
-    } catch (error) {
-      console.error('Error saving snap:', error);
-      Alert.alert('Error', 'Failed to save snap');
-    }
+    await addSnap(uri, caption, fromGallery);
   };
 
   const isRunning = status === 'active' || status === 'paused';
+
+  // Get last location for map from history (latest point)
+  const lastPoint = paceHistory.length > 0 ? paceHistory[paceHistory.length - 1] : null;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -336,36 +224,60 @@ export default function CreateRunScreen() {
           <Ionicons name="arrow-back" size={28} color={runnerTheme.colors.textPrimary} />
         </TouchableOpacity>
         <View style={{ alignItems: 'center' }}>
-          <Text style={styles.title}>New Run</Text>
+          <Text style={styles.title}>{status === 'idle' ? 'New Run' : 'Current Run'}</Text>
           <Text style={styles.subtitle}>{greeting}</Text>
         </View>
         <View style={{ width: 28 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* AI Recommendation - only show when idle */}
         {status === 'idle' && recommendation && (
           <View style={styles.section}>
             <TrailRecommender suggestion={recommendation} />
           </View>
         )}
 
-        <View style={styles.section}>
-          <TrailSelector
-            selectedTrailId={selectedTrailId}
-            selectedTrailName={selectedTrailName}
-            onSelectTrail={(id, name) => {
-              setSelectedTrailId(id);
-              setSelectedTrailName(name);
-            }}
-          />
-        </View>
+        {/* Map View */}
+        {isRunning && lastPoint && (
+          <View style={styles.mapContainer}>
+            <MapView
+              style={styles.map}
+              provider={PROVIDER_DEFAULT}
+              region={{
+                latitude: lastPoint.lat,
+                longitude: lastPoint.lng,
+                latitudeDelta: 0.005,
+                longitudeDelta: 0.005,
+              }}
+              showsUserLocation
+              followsUserLocation
+            >
+              <Polyline
+                coordinates={paceHistory.map(p => ({ latitude: p.lat, longitude: p.lng }))}
+                strokeColor={runnerTheme.colors.accent}
+                strokeWidth={4}
+              />
+            </MapView>
+          </View>
+        )}
+
+        {status === 'idle' && (
+          <View style={styles.section}>
+            <TrailSelector
+              selectedTrailId={selectedTrailId}
+              selectedTrailName={selectedTrailName}
+              onSelectTrail={(id, name) => {
+                setSelectedTrailId(id);
+                setSelectedTrailName(name);
+              }}
+            />
+          </View>
+        )}
 
         <View style={styles.section}>
           <PaceDisplay distance={distance} duration={duration} pace={pace} />
         </View>
 
-        {/* Snap count indicator */}
         {isRunning && snaps.length > 0 && (
           <View style={styles.snapIndicator}>
             <Ionicons name="camera" size={16} color={runnerTheme.colors.accent} />
@@ -377,14 +289,13 @@ export default function CreateRunScreen() {
           <RunControls
             status={status}
             onStart={handleStart}
-            onPause={handlePause}
-            onResume={handleResume}
+            onPause={pauseRun}
+            onResume={resumeRun}
             onStop={handleStop}
           />
         </View>
       </ScrollView>
 
-      {/* Floating camera button - only show during active run */}
       {isRunning && (
         <TouchableOpacity
           style={styles.cameraFab}
@@ -395,7 +306,6 @@ export default function CreateRunScreen() {
         </TouchableOpacity>
       )}
 
-      {/* Camera modal */}
       <CameraCapture
         visible={showCamera}
         onClose={() => setShowCamera(false)}
@@ -431,6 +341,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: runnerTheme.spacing.lg,
+    paddingBottom: 100,
   },
   section: {
     marginBottom: runnerTheme.spacing.xl,
@@ -452,7 +363,7 @@ const styles = StyleSheet.create({
   },
   cameraFab: {
     position: 'absolute',
-    bottom: 120,
+    bottom: 40,
     left: runnerTheme.spacing.lg,
     width: 56,
     height: 56,
@@ -461,5 +372,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     ...runnerTheme.shadow.lg,
+  },
+  mapContainer: {
+    height: 300,
+    borderRadius: runnerTheme.borderRadius.lg,
+    overflow: 'hidden',
+    marginBottom: runnerTheme.spacing.xl,
+    backgroundColor: '#333',
+  },
+  map: {
+    flex: 1,
   },
 });

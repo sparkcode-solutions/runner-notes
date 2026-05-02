@@ -47,6 +47,7 @@ function RootLayoutNav() {
       <Stack.Screen name="run/create" options={{ headerShown: false }} />
       <Stack.Screen name="run/[id]" options={{ headerShown: false }} />
       <Stack.Screen name="run/journal/[id]" options={{ headerShown: false }} />
+      <Stack.Screen name="coach" options={{ presentation: 'modal', headerShown: false }} />
       <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
     </Stack>
   );
@@ -66,16 +67,24 @@ function ThemedApp() {
   );
 }
 
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+
+import { RunProvider } from '@/lib/run-context';
+
 export default function RootLayout() {
   return (
-    <DatabaseProvider>
-      <AuthProvider>
-        <ThemeProvider>
-          <CoachProvider>
-            <ThemedApp />
-          </CoachProvider>
-        </ThemeProvider>
-      </AuthProvider>
-    </DatabaseProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <DatabaseProvider>
+        <AuthProvider>
+          <ThemeProvider>
+            <CoachProvider>
+              <RunProvider>
+                <ThemedApp />
+              </RunProvider>
+            </CoachProvider>
+          </ThemeProvider>
+        </AuthProvider>
+      </DatabaseProvider>
+    </GestureHandlerRootView>
   );
 }

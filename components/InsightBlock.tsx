@@ -59,7 +59,7 @@ export const InsightBlock: React.FC<InsightBlockProps> = ({
   return (
     <View style={[
       styles.container,
-      { borderBottomColor: theme.colors.journalBorder }
+      { borderBottomColor: theme.colors.border }
     ]}>
       {/* Header with icon and label */}
       <View style={styles.header}>
@@ -79,7 +79,7 @@ export const InsightBlock: React.FC<InsightBlockProps> = ({
           style={[
             styles.text,
             {
-              color: theme.colors.journalText,
+              color: theme.colors.textPrimary,
               fontFamily: theme.fonts.body,
               fontStyle: isPromptMode ? 'italic' : 'normal',
             }
