@@ -97,3 +97,16 @@ On-device AI. No accounts. No cloud. No catch.
 
 **Runner Notes**
 *Run. Notice. Note.*
+
+---
+
+### A note on this repository
+
+The source code for Runner Notes is **private** while the app is in active development.
+This public repo intentionally contains only the README and the icon / asset files —
+everything else is hidden via `.gitignore`.
+
+If you'd like early access, want to chat about the project, or are curious about the
+build, get in touch.
+
+

@@ -1,15 +1,29 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+# ────────────────────────────────────────────────────────────
+# Runner Notes is currently a private project.
+# This .gitignore deliberately hides everything except the
+# README and the assets folder so the repo can be made public
+# without exposing source code.
+# ────────────────────────────────────────────────────────────
 
-# dependencies
+# Hide everything at the repo root by default
+/*
+
+# …but keep these
+!/.gitignore
+!/README.md
+!/assets
+!/LICENSE
+
+# Always ignore inside assets — these don't belong on a public repo
+assets/.DS_Store
+assets/**/.DS_Store
+
+# Standard ignores (kept for safety even though /* covers them)
 node_modules/
-
-# Expo
 .expo/
 dist/
 web-build/
 expo-env.d.ts
-
-# Native
 .kotlin/
 *.orig.*
 *.jks
@@ -17,27 +31,14 @@ expo-env.d.ts
 *.p12
 *.key
 *.mobileprovision
-
-# Metro
 .metro-health-check*
-
-# debug
 npm-debug.*
 yarn-debug.*
 yarn-error.*
-
-# macOS
 .DS_Store
 *.pem
-
-# local env files
 .env*.local
-
-# typescript
 *.tsbuildinfo
-
 app-example
-
-# generated native folders
 /ios
 /android
